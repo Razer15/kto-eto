@@ -1,0 +1,84 @@
+:root{
+  --paper:#fbf3e8; --ink:#2c2320; --plum:#7a3b5d; --plum-soft:#b76a8f;
+  --gold:#d99441; --sage:#6f8b6a; --coral:#c9645e; --line:#e3d5c2;
+  --card:#fffaf2; --shadow:rgba(74,45,38,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:'Georgia','Times New Roman',serif; background:var(--paper);
+  color:var(--ink); line-height:1.55; min-height:100vh;
+  background-image:radial-gradient(circle at 15% 15%, rgba(183,106,143,.06), transparent 40%),
+                   radial-gradient(circle at 85% 80%, rgba(217,148,65,.07), transparent 45%);
+}
+.wrap{max-width:600px;margin:0 auto;padding:26px 20px 90px}
+.eyebrow{font-family:'Courier New',monospace;text-transform:uppercase;letter-spacing:.22em;font-size:.68rem;color:var(--plum-soft);margin-bottom:10px}
+h1{font-size:2.6rem;line-height:1.02;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+h1 .em{font-style:italic;color:var(--plum)}
+.h1sm{font-size:2rem}
+.sub{color:#7a6a5f;font-size:1rem;margin-bottom:28px;max-width:44ch}
+h2{font-size:1.5rem;margin-bottom:6px;letter-spacing:-.01em}
+.h2sm{font-size:1.2rem}
+.step-hint{font-family:'Courier New',monospace;font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 8px 30px var(--shadow);margin-bottom:18px}
+label{display:block;font-size:.82rem;font-weight:700;margin-bottom:6px}
+.field-note{font-size:.78rem;color:#9a8a7d;margin-bottom:14px}
+input[type=text],textarea{width:100%;font-family:inherit;font-size:1.05rem;padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);resize:vertical}
+input:focus,textarea:focus{outline:2px solid var(--plum-soft);outline-offset:1px;border-color:transparent}
+textarea{min-height:44px}
+.codefield{text-transform:uppercase;letter-spacing:.1em;font-family:'Courier New',monospace;font-weight:700}
+button{font-family:inherit;font-size:1.02rem;font-weight:700;padding:13px 22px;border:none;border-radius:9px;cursor:pointer;background:var(--plum);color:#fff;transition:transform .08s ease,background .15s ease}
+button:hover{background:#682f4e}
+button:active{transform:translateY(1px)}
+button.gold{background:var(--gold);color:#3a2a12}
+button.gold:hover{background:#c8842f}
+button.ghost{background:transparent;color:var(--plum);border:1.5px solid var(--plum)}
+button.ghost:hover{background:rgba(122,59,93,.07)}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.full{width:100%}
+.row{display:flex;gap:10px}
+.rowtight{gap:8px}
+.gap16{height:16px}
+.gap20{height:20px}
+.mt10{margin-top:10px}
+.mt20{margin-top:20px}
+.mb16{margin-bottom:16px}
+.mb24{margin-bottom:24px}
+.centerblock{margin-left:auto;margin-right:auto}
+.mode-pick{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.mode-btn{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;cursor:pointer;box-shadow:0 4px 14px var(--shadow);transition:transform .1s ease,border-color .15s ease;color:var(--ink)}
+.mode-btn:hover{transform:translateY(-2px);border-color:var(--plum-soft)}
+.mode-btn .mb-title{font-size:1.25rem;font-weight:700;margin-bottom:4px}
+.mode-btn .mb-title.plum{color:var(--plum)}
+.mode-btn .mb-desc{font-size:.9rem;color:#7a6a5f;font-weight:400}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:12px 20px;border-radius:30px;font-size:.9rem;opacity:0;pointer-events:none;transition:all .25s ease;z-index:50;max-width:90%;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.lobby-list{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.lobby-chip{background:#f4ead9;border-radius:20px;padding:7px 15px;font-size:.92rem;font-weight:700;display:flex;align-items:center;gap:7px}
+.lobby-chip .dot{width:8px;height:8px;border-radius:50%;background:var(--sage);display:inline-block}
+.lobby-chip.waiting .dot{background:var(--gold)}
+.fact-item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 18px 16px;margin-bottom:16px;box-shadow:0 4px 12px var(--shadow)}
+.fact-num{font-family:'Courier New',monospace;font-size:.7rem;color:var(--plum-soft);letter-spacing:.15em;margin-bottom:10px}
+.fact-text{font-size:1.15rem;font-style:italic;margin-bottom:16px;line-height:1.4}
+.guess-grid{display:flex;flex-wrap:wrap;gap:8px}
+.guess-chip{font-family:inherit;font-size:.92rem;padding:9px 15px;border-radius:20px;border:1.5px solid var(--line);background:#fff;cursor:pointer;color:var(--ink);transition:all .12s ease;font-weight:700}
+.guess-chip:hover{border-color:var(--plum-soft)}
+.guess-chip.picked{background:var(--plum);color:#fff;border-color:var(--plum)}
+.progress{font-family:'Courier New',monospace;font-size:.8rem;color:#9a8a7d;text-align:center;margin:10px 0 22px;letter-spacing:.08em}
+.score-row{display:flex;justify-content:space-between;align-items:center;padding:14px 6px;border-bottom:1px solid var(--line)}
+.score-row:last-child{border-bottom:none}
+.score-name{font-size:1.1rem;font-weight:700}
+.score-pts{font-family:'Courier New',monospace;font-size:1.3rem;color:var(--gold);font-weight:700}
+.score-row.lead{background:linear-gradient(90deg,rgba(217,148,65,.12),transparent);border-radius:8px}
+.score-row.lead .score-name::after{content:' 👑'}
+.reveal-line{font-size:.86rem;margin-top:12px;font-weight:700}
+.reveal-line.hit{color:var(--sage)}
+.back{background:none;border:none;color:var(--plum);font-family:inherit;font-size:.9rem;cursor:pointer;padding:0;margin-bottom:20px;text-decoration:underline}
+.divider{height:1px;background:var(--line);margin:26px 0}
+.hidden{display:none!important}
+.center{text-align:center}
+.big-emoji{font-size:3rem;text-align:center;margin:10px 0}
+.code-badge{display:inline-block;background:#f4ead9;border:1px dashed var(--gold);border-radius:8px;padding:4px 12px;font-family:'Courier New',monospace;font-weight:700;font-size:1.1rem;letter-spacing:.1em;color:var(--plum)}
+footer{text-align:center;font-size:.72rem;color:#b0a293;margin-top:36px;font-family:'Courier New',monospace;letter-spacing:.1em}
+.setup-warn{background:#fbe8e6;border:1px solid var(--coral);border-radius:10px;padding:16px;font-size:.9rem;color:#8a3b36;margin-bottom:18px}
+.setup-warn code{background:#fff;padding:1px 5px;border-radius:4px;font-size:.85rem}

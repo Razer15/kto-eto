@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Разрешаем читать и писать только документы комнат.
+    // Открыто всем без авторизации — этого достаточно для разовой игры
+    // на компанию друзей. Для чего-то серьёзного добавь Firebase Auth.
+    match /rooms/{roomId} {
+      allow read, write: if true;
+    }
+  }
+}

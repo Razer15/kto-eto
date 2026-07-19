@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кто это? — угадай подругу</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SETUP WARNING -->
+  <section id="setupWarn" class="hidden">
+    <div class="eyebrow">Нужна одна настройка</div>
+    <h1>Почти <span class="em">готово</span></h1>
+    <div class="setup-warn">
+      Firebase-ключ ещё не вставлен. Открой <code>firebase-config.js</code> и впиши значения из своей консоли Firebase. Инструкция — в <code>README.md</code>.
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section id="home" class="hidden">
+    <div class="eyebrow">Игра на вечер · для подруг</div>
+    <h1>Кто <span class="em">это?</span></h1>
+    <p class="sub">Каждая тайно пишет пару фактов о себе. Потом угадываем, кому какой факт принадлежит. За угадку — балл.</p>
+    <div class="mode-pick">
+      <div class="mode-btn" data-action="showCreate">
+        <div class="mb-title plum">Создать игру →</div>
+        <div class="mb-desc">Ты запускаешь комнату и говоришь подругам код</div>
+      </div>
+      <div class="mode-btn" data-action="showJoin">
+        <div class="mb-title">Войти по коду →</div>
+        <div class="mb-desc">Тебе скинули код комнаты — вводи его</div>
+      </div>
+    </div>
+    <footer>синхронно на всех телефонах · бесплатно</footer>
+  </section>
+
+  <!-- CREATE -->
+  <section id="create" class="hidden">
+    <button class="back" data-action="home">← назад</button>
+    <div class="step-hint">Создание комнаты</div>
+    <h2>Новая игра</h2>
+    <p class="sub">Задай, сколько фактов пишет каждая. У всех будет одинаково.</p>
+    <div class="card">
+      <label for="cName">Твоё имя</label>
+      <input type="text" id="cName" placeholder="Например, Настя" autocomplete="off">
+      <div class="gap16"></div>
+      <label for="cCount">Сколько фактов от каждой</label>
+      <div class="row rowtight">
+        <button type="button" class="ghost countbtn" data-n="2">2</button>
+        <button type="button" class="ghost countbtn" data-n="3">3</button>
+        <button type="button" class="ghost countbtn" data-n="4">4</button>
+        <button type="button" class="ghost countbtn" data-n="5">5</button>
+      </div>
+      <div class="gap20"></div>
+      <button class="full gold" data-action="createRoom">Создать комнату →</button>
+    </div>
+  </section>
+
+  <!-- JOIN -->
+  <section id="join" class="hidden">
+    <button class="back" data-action="home">← назад</button>
+    <div class="step-hint">Вход в комнату</div>
+    <h2>Войти в игру</h2>
+    <p class="sub">Введи код, который вам скинула создательница комнаты.</p>
+    <div class="card">
+      <label for="jCode">Код комнаты</label>
+      <input type="text" id="jCode" class="codefield" placeholder="напр. КОШКА42" autocomplete="off">
+      <div class="gap16"></div>
+      <label for="jName">Твоё имя</label>
+      <input type="text" id="jName" placeholder="Например, Лена" autocomplete="off">
+      <div class="gap20"></div>
+      <button class="full gold" data-action="joinRoom">Войти →</button>
+    </div>
+  </section>
+
+  <!-- WRITE FACTS -->
+  <section id="write" class="hidden">
+    <div class="step-hint">Комната <span id="wCode" class="code-badge"></span></div>
+    <h2>Напиши о себе, <span id="wName"></span></h2>
+    <p class="sub">Факты, которые про тебя, но не слишком очевидные. Не давай подругам подсмотреть 🙈</p>
+    <div class="card">
+      <div id="factInputs"></div>
+      <button class="full gold" data-action="submitFacts">Я готова →</button>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="hidden">
+    <div class="step-hint">Комната <span id="lCode" class="code-badge"></span></div>
+    <h2>Кто в игре</h2>
+    <p class="sub">Скажи подругам код комнаты. Когда все написали факты — начинаем.</p>
+    <div class="card">
+      <div class="lobby-list" id="lobbyList"></div>
+      <div class="divider"></div>
+      <div id="lobbyStatus"></div>
+      <div id="startArea" class="hidden">
+        <button class="full gold" data-action="beginGame">Начать угадывать →</button>
+        <p class="field-note center mt10">Начать может любая, когда все готовы</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="playScreen" class="hidden">
+    <div class="step-hint">Комната <span id="pCode" class="code-badge"></span> · угадываем</div>
+    <h2>Чей это факт?</h2>
+    <p class="sub">Отметь, кому, по-твоему, принадлежит каждый факт. Свои факты пропускаются.</p>
+    <div class="progress" id="playProgress"></div>
+    <div id="factList"></div>
+    <div id="doneArea" class="hidden center">
+      <div class="big-emoji">✨</div>
+      <p class="sub center centerblock mb16">Ты ответила на все! Ждём остальных…</p>
+      <div id="waitingOn"></div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results" class="hidden">
+    <div class="step-hint">Комната <span id="rCode" class="code-badge"></span> · итоги</div>
+    <div class="big-emoji">🏆</div>
+    <h1 class="center h1sm">Результаты</h1>
+    <p class="sub center centerblock mb24" id="winnerLine"></p>
+    <div class="card" id="scoreboard"></div>
+    <div class="divider"></div>
+    <h2 class="h2sm">Разбор фактов</h2>
+    <p class="field-note">Кому что принадлежало</p>
+    <div id="reveal"></div>
+    <button class="full ghost mt20" data-action="reload">Сыграть заново</button>
+  </section>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
