@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp }
+import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp, FieldPath, runTransaction }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -61,7 +61,6 @@ async function tryRestore() {
     const snap = await getDoc(doc(db, 'rooms', saved.roomCode));
     if (!snap.exists()) { clearSession(); return; }
     const data = snap.data();
-    if (data.phase === 'results') { clearSession(); return; }
     me = saved.me; roomCode = saved.roomCode; factCount = data.factCount || 3;
     listenRoom();
     routeInitial(data);
@@ -73,6 +72,7 @@ function routeInitial(data) {
   ['wCode','lCode','pCode','rCode'].forEach(id => $(id).textContent = roomCode);
   $('wName').textContent = me;
   if (data.phase === 'playing') { go('playScreen'); return; }
+  if (data.phase === 'results') return;  // the snapshot listener will call showResults()
   // lobby: if we already submitted facts → lobby, else back to the write screen
   const meP = (data.players || []).find(p => p.name.toLowerCase() === me.toLowerCase());
   if (meP && meP.ready) go('lobby'); else openWriteScreen();
@@ -95,10 +95,22 @@ function setCount(n) {
 }
 
 // ---------- create room ----------
+// Pick a room code that isn't already taken. Rooms in the shared Firebase
+// project are never deleted, so codes accumulate; setDoc would silently
+// overwrite an existing (possibly live) room on a collision.
+async function freshCode() {
+  for (let i = 0; i < 8; i++) {
+    const c = genCode();
+    try { if (!(await getDoc(doc(db, 'rooms', c))).exists()) return c; }
+    catch (e) { return c; }  // read failed (e.g. rules) — fall back to using it
+  }
+  return genCode() + Math.floor(Math.random() * 9);  // last resort: extra entropy
+}
+
 async function createRoom() {
   const name = $('cName').value.trim();
   if (!name) { toast('Впиши имя'); return; }
-  me = name; roomCode = genCode();
+  me = name; roomCode = await freshCode();
   try {
     await setDoc(roomRef(), {
       code: roomCode, factCount, phase: 'lobby', creator: me,
@@ -160,13 +172,20 @@ function openWriteScreen() {
 async function submitFacts() {
   const facts = [...document.querySelectorAll('.factField')].map(f => f.value.trim());
   if (facts.some(f => !f)) { toast('Заполни все факты'); return; }
+  const ref = roomRef();
+  const newFacts = facts.map((t, i) => ({ id: me + '__' + i, text: t, owner: me }));
   try {
-    const snap = await getDoc(roomRef());
-    const data = snap.data();
-    const newFacts = facts.map((t, i) => ({ id: me + '__' + i, text: t, owner: me }));
-    const players = data.players.map(p => p.name.toLowerCase() === me.toLowerCase() ? { ...p, ready: true } : p);
-    const others = (data.facts || []).filter(f => f.owner.toLowerCase() !== me.toLowerCase());
-    await updateDoc(roomRef(), { facts: [...others, ...newFacts], players });
+    // Transaction: submitFacts rewrites the whole facts+players arrays, so two
+    // people finishing at once would otherwise last-write-wins and drop one's
+    // facts. runTransaction re-reads and retries on conflict.
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('room gone');
+      const data = snap.data();
+      const players = (data.players || []).map(p => p.name.toLowerCase() === me.toLowerCase() ? { ...p, ready: true } : p);
+      const others = (data.facts || []).filter(f => f.owner.toLowerCase() !== me.toLowerCase());
+      tx.update(ref, { facts: [...others, ...newFacts], players });
+    });
     go('lobby');
   } catch (e) { console.error(e); toast('Не удалось сохранить'); }
 }
@@ -310,7 +329,10 @@ function triggerReveal(idx) {
 async function pick(fid, name) {
   const g = { ...((room.guesses && room.guesses[me]) || {}) };
   g[fid] = name;
-  try { await updateDoc(roomRef(), { [`guesses.${me}`]: g }); }
+  // FieldPath keeps `me` a literal map key — a dotted string in updateDoc's
+  // object form (`guesses.${me}`) would be parsed as a nested path and corrupt
+  // the guesses map (breaking answer counting → step softlock, and results).
+  try { await updateDoc(roomRef(), new FieldPath('guesses', me), g); }
   catch (e) { console.error(e); toast('Не удалось отправить ответ'); }
 }
 
