@@ -24,10 +24,14 @@ let revealSent = -1;   // guard: reveal write already sent for this step index
 const $ = id => document.getElementById(id);
 const roomRef = () => doc(db, 'rooms', roomCode);
 
-// ---------- session persistence (survive refresh mid-game) ----------
+// ---------- session persistence (survive refresh AND full tab close mid-game) ----------
+// localStorage (not sessionStorage) so a closed/reopened tab still restores.
+// The freshness window stops us resurrecting an old room the next day: rooms are
+// never deleted, so a stale saved code could otherwise drop you into a dead game.
 const SKEY = 'ktoeto:v1';
-function saveSession() { try { sessionStorage.setItem(SKEY, JSON.stringify({ me, roomCode })); } catch (e) {} }
-function clearSession() { try { sessionStorage.removeItem(SKEY); } catch (e) {} }
+const RESTORE_WINDOW_MS = 12 * 60 * 60 * 1000; // one party evening
+function saveSession() { try { localStorage.setItem(SKEY, JSON.stringify({ me, roomCode, savedAt: Date.now() })); } catch (e) {} }
+function clearSession() { try { localStorage.removeItem(SKEY); } catch (e) {} }
 
 function go(id) {
   ['setupWarn','home','create','join','write','lobby','playScreen','results']
@@ -55,13 +59,15 @@ if (!configOK) {
 // Reconnect after a refresh / accidental navigation, using the saved session.
 async function tryRestore() {
   let saved = null;
-  try { saved = JSON.parse(sessionStorage.getItem(SKEY) || 'null'); } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) {}
   if (!saved || !saved.me || !saved.roomCode) return;
+  if (!saved.savedAt || Date.now() - saved.savedAt > RESTORE_WINDOW_MS) { clearSession(); return; }
   try {
     const snap = await getDoc(doc(db, 'rooms', saved.roomCode));
     if (!snap.exists()) { clearSession(); return; }
     const data = snap.data();
     me = saved.me; roomCode = saved.roomCode; factCount = data.factCount || 3;
+    saveSession();   // reopening is activity — refresh savedAt so the window doesn't expire mid-game
     listenRoom();
     routeInitial(data);
   } catch (e) { console.error(e); clearSession(); }
