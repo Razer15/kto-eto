@@ -90,14 +90,16 @@
   <section id="lobby" class="hidden">
     <div class="step-hint">Комната <span id="lCode" class="code-badge"></span></div>
     <h2>Кто в игре</h2>
-    <p class="sub">Скажи подругам код комнаты. Когда все написали факты — начинаем.</p>
+    <p class="sub" id="lobbyHint"></p>
     <div class="card">
       <div class="lobby-list" id="lobbyList"></div>
       <div class="divider"></div>
       <div id="lobbyStatus"></div>
       <div id="startArea" class="hidden">
         <button class="full gold" data-action="beginGame">Начать угадывать →</button>
-        <p class="field-note center mt10">Начать может любая, когда все готовы</p>
+      </div>
+      <div id="waitStart" class="hidden">
+        <p class="center field-note" id="waitStartText"></p>
       </div>
     </div>
   </section>
@@ -106,14 +108,9 @@
   <section id="playScreen" class="hidden">
     <div class="step-hint">Комната <span id="pCode" class="code-badge"></span> · угадываем</div>
     <h2>Чей это факт?</h2>
-    <p class="sub">Отметь, кому, по-твоему, принадлежит каждый факт. Свои факты пропускаются.</p>
+    <p class="sub">Отметь, кому он принадлежит. Идём по одному факту — ждём всех и сразу смотрим ответ.</p>
     <div class="progress" id="playProgress"></div>
-    <div id="factList"></div>
-    <div id="doneArea" class="hidden center">
-      <div class="big-emoji">✨</div>
-      <p class="sub center centerblock mb16">Ты ответила на все! Ждём остальных…</p>
-      <div id="waitingOn"></div>
-    </div>
+    <div id="factCard"></div>
   </section>
 
   <!-- RESULTS -->

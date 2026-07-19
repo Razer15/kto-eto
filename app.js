@@ -19,11 +19,10 @@ let roomCode = "";
 let unsub = null;
 let room = null;
 let factCount = 3;
-let myGuesses = {};
-let started = false;
-let orderedFacts = [];
+let revealSent = -1;   // guard: reveal write already sent for this step index
 
 const $ = id => document.getElementById(id);
+const roomRef = () => doc(db, 'rooms', roomCode);
 
 function go(id) {
   ['setupWarn','home','create','join','write','lobby','playScreen','results']
@@ -46,6 +45,7 @@ go(configOK ? 'home' : 'setupWarn');
 // ---------- room code ----------
 const WORDS = ['КОШКА','ЛУНА','МОРЕ','ВИШНЯ','ЛИСА','ЗВЕЗДА','МЯТА','ГРОЗА','ПЕРО','ВОЛНА','ИСКРА','РОЗА','ТУЧА','ЁЖИК','КЛЁН'];
 function genCode() { return WORDS[Math.floor(Math.random()*WORDS.length)] + Math.floor(10 + Math.random()*89); }
+function shuffle(arr) { const a = [...arr]; for (let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
 
 // ---------- fact count selector ----------
 function setCount(n) {
@@ -64,10 +64,11 @@ async function createRoom() {
   if (!name) { toast('Впиши имя'); return; }
   me = name; roomCode = genCode();
   try {
-    await setDoc(doc(db, 'rooms', roomCode), {
-      code: roomCode, factCount, phase: 'lobby',
+    await setDoc(roomRef(), {
+      code: roomCode, factCount, phase: 'lobby', creator: me,
       players: [{ name: me, ready: false }],
-      facts: [], guesses: {}, done: [], createdAt: serverTimestamp()
+      facts: [], guesses: {}, order: [], stepIndex: 0, stepRevealed: false,
+      createdAt: serverTimestamp()
     });
     listenRoom();
     openWriteScreen();
@@ -113,12 +114,12 @@ async function submitFacts() {
   const facts = [...document.querySelectorAll('.factField')].map(f => f.value.trim());
   if (facts.some(f => !f)) { toast('Заполни все факты'); return; }
   try {
-    const snap = await getDoc(doc(db, 'rooms', roomCode));
+    const snap = await getDoc(roomRef());
     const data = snap.data();
     const newFacts = facts.map((t, i) => ({ id: me + '__' + i, text: t, owner: me }));
     const players = data.players.map(p => p.name.toLowerCase() === me.toLowerCase() ? { ...p, ready: true } : p);
     const others = (data.facts || []).filter(f => f.owner.toLowerCase() !== me.toLowerCase());
-    await updateDoc(doc(db, 'rooms', roomCode), { facts: [...others, ...newFacts], players });
+    await updateDoc(roomRef(), { facts: [...others, ...newFacts], players });
     go('lobby');
   } catch (e) { console.error(e); toast('Не удалось сохранить'); }
 }
@@ -126,7 +127,7 @@ async function submitFacts() {
 // ---------- live listener ----------
 function listenRoom() {
   if (unsub) unsub();
-  unsub = onSnapshot(doc(db, 'rooms', roomCode), snap => {
+  unsub = onSnapshot(roomRef(), snap => {
     if (!snap.exists()) return;
     room = snap.data();
     render();
@@ -135,10 +136,13 @@ function listenRoom() {
 
 function render() {
   if (!room) return;
-  if (room.phase === 'playing' && !started) { started = true; buildPlayScreen(); }
   if (room.phase === 'results') { showResults(); return; }
+  if (room.phase === 'playing') {
+    if ($('playScreen').classList.contains('hidden')) go('playScreen');
+    renderPlay();
+    return;
+  }
   if (!$('lobby').classList.contains('hidden')) renderLobby();
-  if (!$('playScreen').classList.contains('hidden')) { renderWaiting(); checkAllDone(); }
 }
 
 // ---------- lobby ----------
@@ -147,83 +151,125 @@ function renderLobby() {
   room.players.forEach(p => {
     const chip = document.createElement('div');
     chip.className = 'lobby-chip' + (p.ready ? '' : ' waiting');
-    chip.innerHTML = `<span class="dot"></span>${escapeHtml(p.name)}${p.ready ? '' : ' <span style="font-weight:400;color:#9a8a7d">пишет…</span>'}`;
+    chip.innerHTML = `<span class="dot"></span>${escapeHtml(p.name)} <span class="lobby-status">${p.ready ? 'готова' : 'пишет…'}</span>`;
     list.appendChild(chip);
   });
   const allReady = room.players.length >= 2 && room.players.every(p => p.ready);
   const readyCount = room.players.filter(p => p.ready).length;
+  const isCreator = (room.creator || '').toLowerCase() === me.toLowerCase();
+
+  $('lobbyHint').textContent = isCreator
+    ? 'Скажи подругам код комнаты — он вверху. Когда все напишут факты, нажми «Начать».'
+    : 'Когда все напишут факты, создательница начнёт игру.';
+
   $('lobbyStatus').innerHTML = allReady
-    ? `<p class="center" style="color:var(--sage);font-weight:700">Все готовы! 🎉</p>`
+    ? `<p class="center allready">Все готовы! 🎉</p>`
     : `<p class="field-note center">Готовы: ${readyCount} из ${room.players.length}${room.players.length < 2 ? ' · нужно минимум 2 участницы' : ''}</p>`;
-  $('startArea').classList.toggle('hidden', !allReady);
+
+  const startArea = $('startArea'), waitStart = $('waitStart');
+  if (isCreator) {
+    startArea.classList.toggle('hidden', !allReady);
+    waitStart.classList.add('hidden');
+  } else {
+    startArea.classList.add('hidden');
+    waitStart.classList.remove('hidden');
+    $('waitStartText').textContent = allReady
+      ? 'Все готовы — ждём, когда создательница начнёт.'
+      : 'Ждём, пока все напишут факты…';
+  }
 }
 
+// ---------- start game (creator) ----------
 async function beginGame() {
-  try { await updateDoc(doc(db, 'rooms', roomCode), { phase: 'playing' }); }
-  catch (e) { console.error(e); toast('Ошибка старта'); }
+  const order = shuffle((room.facts || []).map(f => f.id));
+  try {
+    await updateDoc(roomRef(), { phase: 'playing', order, stepIndex: 0, stepRevealed: false, guesses: {} });
+  } catch (e) { console.error(e); toast('Ошибка старта'); }
 }
 
-// ---------- play ----------
-function buildPlayScreen() {
-  orderedFacts = [...room.facts].sort((a, b) => hashStr(a.id + roomCode) - hashStr(b.id + roomCode));
-  const list = $('factList'); list.innerHTML = '';
-  orderedFacts.forEach(f => {
-    if (f.owner.toLowerCase() === me.toLowerCase()) return;
-    const div = document.createElement('div');
-    div.className = 'fact-item'; div.dataset.fid = f.id;
+// ---------- play: one fact at a time, in lockstep ----------
+function renderPlay() {
+  const order = room.order || [];
+  const total = order.length;
+  const idx = room.stepIndex || 0;
+  const fid = order[idx];
+  const fact = (room.facts || []).find(f => f.id === fid);
+  const card = $('factCard');
+  $('playProgress').textContent = total ? `Факт ${Math.min(idx + 1, total)} из ${total}` : '';
+  if (!fact) { card.innerHTML = ''; return; }
+
+  const owner = fact.owner;
+  const iAmOwner = owner.toLowerCase() === me.toLowerCase();
+  const required = room.players.filter(p => p.name.toLowerCase() !== owner.toLowerCase());
+  const guessesAll = room.guesses || {};
+  const answered = required.filter(p => guessesAll[p.name] && guessesAll[p.name][fid] !== undefined);
+  const allAnswered = required.length > 0 && answered.length === required.length;
+  const revealed = !!room.stepRevealed;
+  const myPick = guessesAll[me] ? guessesAll[me][fid] : undefined;
+
+  // once everyone (except owner) has answered, flip to reveal for all
+  if (allAnswered && !revealed) triggerReveal(idx);
+
+  let html = `<div class="fact-item">
+    <div class="fact-num">${iAmOwner ? 'Твой факт' : 'Факт'}</div>
+    <div class="fact-text">«${escapeHtml(fact.text)}»</div>`;
+
+  if (iAmOwner) {
+    html += revealed
+      ? `<div class="reveal-line hit">Это твой факт — все увидели ответ 🙈</div>`
+      : `<p class="field-note">Остальные угадывают. Ответили ${answered.length} из ${required.length}</p>`;
+  } else {
+    const options = room.players.filter(p => p.name.toLowerCase() !== me.toLowerCase());
     let chips = '';
-    room.players.forEach(p => {
-      if (p.name.toLowerCase() === me.toLowerCase()) return;
-      chips += `<button class="guess-chip" data-fid="${escapeAttr(f.id)}" data-name="${escapeAttr(p.name)}">${escapeHtml(p.name)}</button>`;
+    options.forEach(p => {
+      let cls = 'guess-chip', attrs = '';
+      if (revealed) {
+        if (p.name.toLowerCase() === owner.toLowerCase()) cls += ' correct';
+        else if (myPick && myPick.toLowerCase() === p.name.toLowerCase()) cls += ' wrong';
+        attrs = 'disabled';
+      } else if (myPick) {
+        if (myPick.toLowerCase() === p.name.toLowerCase()) cls += ' picked';
+        attrs = 'disabled';
+      }
+      chips += `<button class="${cls}" data-fid="${escapeAttr(fid)}" data-name="${escapeAttr(p.name)}" ${attrs}>${escapeHtml(p.name)}</button>`;
     });
-    div.innerHTML = `<div class="fact-num">Факт</div><div class="fact-text">«${escapeHtml(f.text)}»</div><div class="guess-grid">${chips}</div>`;
-    list.appendChild(div);
-  });
-  updatePlayProgress();
-  go('playScreen');
-}
-
-async function pick(fid, name, btn) {
-  myGuesses[fid] = name;
-  [...btn.parentElement.children].forEach(c => c.classList.remove('picked'));
-  btn.classList.add('picked');
-  updatePlayProgress();
-  try { await updateDoc(doc(db, 'rooms', roomCode), { [`guesses.${me}`]: myGuesses }); }
-  catch (e) { console.error(e); }
-  checkMyCompletion();
-}
-
-function myFactsToGuess() {
-  return orderedFacts.filter(f => f.owner.toLowerCase() !== me.toLowerCase());
-}
-function updatePlayProgress() {
-  $('playProgress').textContent = `Отвечено ${Object.keys(myGuesses).length} из ${myFactsToGuess().length}`;
-}
-
-async function checkMyCompletion() {
-  if (Object.keys(myGuesses).length >= myFactsToGuess().length) {
-    try { await updateDoc(doc(db, 'rooms', roomCode), { done: arrayUnion(me) }); } catch (e) {}
-    $('factList').classList.add('hidden');
-    $('playProgress').classList.add('hidden');
-    $('doneArea').classList.remove('hidden');
-    renderWaiting();
+    html += `<div class="guess-grid">${chips}</div>`;
+    if (revealed) {
+      const hit = myPick && myPick.toLowerCase() === owner.toLowerCase();
+      html += `<div class="reveal-line ${hit ? 'hit' : 'miss'}">${hit ? '✓ Верно! Это ' + escapeHtml(owner) : '✗ Это ' + escapeHtml(owner)}</div>`;
+    } else if (myPick) {
+      html += `<p class="field-note waitline">Ждём остальных: ${answered.length} из ${required.length}</p>`;
+    }
   }
-}
 
-function renderWaiting() {
-  if ($('doneArea').classList.contains('hidden')) return;
-  const done = room.done || [];
-  const waiting = room.players.map(p => p.name).filter(n => !done.includes(n));
-  $('waitingOn').innerHTML = waiting.length
-    ? `<p class="field-note center">Ещё отвечают: ${waiting.map(escapeHtml).join(', ')}</p>`
-    : `<p class="center" style="color:var(--sage);font-weight:700">Все закончили!</p>`;
-}
-
-async function checkAllDone() {
-  const done = room.done || [];
-  if (done.length >= room.players.length && room.players.length >= 2 && room.phase === 'playing') {
-    try { await updateDoc(doc(db, 'rooms', roomCode), { phase: 'results' }); } catch (e) {}
+  if (revealed) {
+    const last = idx >= total - 1;
+    html += `<button class="full gold mt16" data-action="nextFact">${last ? 'Показать результаты →' : 'Дальше →'}</button>`;
   }
+  html += `</div>`;
+  card.innerHTML = html;
+}
+
+function triggerReveal(idx) {
+  if (revealSent === idx) return;
+  revealSent = idx;
+  updateDoc(roomRef(), { stepRevealed: true }).catch(() => { revealSent = -1; });
+}
+
+async function pick(fid, name) {
+  const g = { ...((room.guesses && room.guesses[me]) || {}) };
+  g[fid] = name;
+  try { await updateDoc(roomRef(), { [`guesses.${me}`]: g }); }
+  catch (e) { console.error(e); toast('Не удалось отправить ответ'); }
+}
+
+async function nextFact() {
+  const order = room.order || [];
+  const next = (room.stepIndex || 0) + 1;
+  try {
+    if (next >= order.length) await updateDoc(roomRef(), { phase: 'results' });
+    else await updateDoc(roomRef(), { stepIndex: next, stepRevealed: false });
+  } catch (e) { console.error(e); }
 }
 
 // ---------- results ----------
@@ -258,14 +304,13 @@ function showResults() {
   room.facts.forEach(f => {
     const div = document.createElement('div');
     div.className = 'fact-item';
-    div.innerHTML = `<div class="fact-text" style="margin-bottom:8px">«${escapeHtml(f.text)}»</div><div class="reveal-line hit">— ${escapeHtml(f.owner)}</div>`;
+    div.innerHTML = `<div class="fact-text revtext">«${escapeHtml(f.text)}»</div><div class="reveal-line hit">— ${escapeHtml(f.owner)}</div>`;
     rev.appendChild(div);
   });
   go('results');
 }
 
 // ---------- helpers ----------
-function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; } return h; }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function escapeAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 
@@ -281,11 +326,12 @@ document.addEventListener('click', e => {
     else if (a === 'joinRoom') joinRoom();
     else if (a === 'submitFacts') submitFacts();
     else if (a === 'beginGame') beginGame();
+    else if (a === 'nextFact') nextFact();
     else if (a === 'reload') location.reload();
     return;
   }
   const countEl = e.target.closest('.countbtn');
   if (countEl) { setCount(+countEl.dataset.n); return; }
   const guessEl = e.target.closest('.guess-chip');
-  if (guessEl && guessEl.dataset.fid) { pick(guessEl.dataset.fid, guessEl.dataset.name, guessEl); return; }
+  if (guessEl && guessEl.dataset.fid && !guessEl.disabled) { pick(guessEl.dataset.fid, guessEl.dataset.name); return; }
 });

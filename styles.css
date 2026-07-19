@@ -64,6 +64,9 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .guess-chip{font-family:inherit;font-size:.92rem;padding:9px 15px;border-radius:20px;border:1.5px solid var(--line);background:#fff;cursor:pointer;color:var(--ink);transition:all .12s ease;font-weight:700}
 .guess-chip:hover{border-color:var(--plum-soft)}
 .guess-chip.picked{background:var(--plum);color:#fff;border-color:var(--plum)}
+.guess-chip.correct{background:var(--sage);color:#fff;border-color:var(--sage)}
+.guess-chip.wrong{background:var(--coral);color:#fff;border-color:var(--coral)}
+.guess-chip:disabled{cursor:default;opacity:1}
 .progress{font-family:'Courier New',monospace;font-size:.8rem;color:#9a8a7d;text-align:center;margin:10px 0 22px;letter-spacing:.08em}
 .score-row{display:flex;justify-content:space-between;align-items:center;padding:14px 6px;border-bottom:1px solid var(--line)}
 .score-row:last-child{border-bottom:none}
@@ -73,6 +76,12 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .score-row.lead .score-name::after{content:' 👑'}
 .reveal-line{font-size:.86rem;margin-top:12px;font-weight:700}
 .reveal-line.hit{color:var(--sage)}
+.reveal-line.miss{color:var(--coral)}
+.mt16{margin-top:16px}
+.waitline{margin-top:12px}
+.revtext{margin-bottom:8px}
+.lobby-status{font-weight:400;color:#9a8a7d}
+.allready{color:var(--sage);font-weight:700}
 .back{background:none;border:none;color:var(--plum);font-family:inherit;font-size:.9rem;cursor:pointer;padding:0;margin-bottom:20px;text-decoration:underline}
 .divider{height:1px;background:var(--line);margin:26px 0}
 .hidden{display:none!important}
