@@ -24,6 +24,11 @@ let revealSent = -1;   // guard: reveal write already sent for this step index
 const $ = id => document.getElementById(id);
 const roomRef = () => doc(db, 'rooms', roomCode);
 
+// ---------- session persistence (survive refresh mid-game) ----------
+const SKEY = 'ktoeto:v1';
+function saveSession() { try { sessionStorage.setItem(SKEY, JSON.stringify({ me, roomCode })); } catch (e) {} }
+function clearSession() { try { sessionStorage.removeItem(SKEY); } catch (e) {} }
+
 function go(id) {
   ['setupWarn','home','create','join','write','lobby','playScreen','results']
     .forEach(s => $(s).classList.add('hidden'));
@@ -40,7 +45,38 @@ function toast(m) {
 }
 
 // ---------- initial screen ----------
-go(configOK ? 'home' : 'setupWarn');
+if (!configOK) {
+  go('setupWarn');
+} else {
+  go('home');
+  tryRestore();
+}
+
+// Reconnect after a refresh / accidental navigation, using the saved session.
+async function tryRestore() {
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(SKEY) || 'null'); } catch (e) {}
+  if (!saved || !saved.me || !saved.roomCode) return;
+  try {
+    const snap = await getDoc(doc(db, 'rooms', saved.roomCode));
+    if (!snap.exists()) { clearSession(); return; }
+    const data = snap.data();
+    if (data.phase === 'results') { clearSession(); return; }
+    me = saved.me; roomCode = saved.roomCode; factCount = data.factCount || 3;
+    listenRoom();
+    routeInitial(data);
+  } catch (e) { console.error(e); clearSession(); }
+}
+
+// Put the reconnecting player on the right screen for the current phase.
+function routeInitial(data) {
+  ['wCode','lCode','pCode','rCode'].forEach(id => $(id).textContent = roomCode);
+  $('wName').textContent = me;
+  if (data.phase === 'playing') { go('playScreen'); return; }
+  // lobby: if we already submitted facts → lobby, else back to the write screen
+  const meP = (data.players || []).find(p => p.name.toLowerCase() === me.toLowerCase());
+  if (meP && meP.ready) go('lobby'); else openWriteScreen();
+}
 
 // ---------- room code ----------
 const WORDS = ['КОШКА','ЛУНА','МОРЕ','ВИШНЯ','ЛИСА','ЗВЕЗДА','МЯТА','ГРОЗА','ПЕРО','ВОЛНА','ИСКРА','РОЗА','ТУЧА','ЁЖИК','КЛЁН'];
@@ -70,6 +106,7 @@ async function createRoom() {
       facts: [], guesses: {}, order: [], stepIndex: 0, stepRevealed: false,
       createdAt: serverTimestamp()
     });
+    saveSession();
     listenRoom();
     openWriteScreen();
   } catch (e) { console.error(e); toast('Не удалось создать. Проверь правила Firestore.'); }
@@ -85,11 +122,21 @@ async function joinRoom() {
     const snap = await getDoc(doc(db, 'rooms', code));
     if (!snap.exists()) { toast('Комната не найдена'); return; }
     const data = snap.data();
-    if (data.phase !== 'lobby') { toast('Игра уже началась'); return; }
-    me = name; roomCode = code; factCount = data.factCount;
-    if (!data.players.some(p => p.name.toLowerCase() === me.toLowerCase())) {
-      await updateDoc(doc(db, 'rooms', code), { players: arrayUnion({ name: me, ready: false }) });
+    const existing = data.players.some(p => p.name.toLowerCase() === name.toLowerCase());
+    if (data.phase !== 'lobby') {
+      // Game already started: only an existing player may reconnect (e.g. after a refresh).
+      if (!existing) { toast('Игра уже началась'); return; }
+      me = name; roomCode = code; factCount = data.factCount;
+      saveSession();
+      listenRoom();
+      routeInitial(data);
+      return;
     }
+    // Lobby: a matching name means someone with that name is already in — pick another.
+    if (existing) { toast('Это имя уже занято — выбери другое'); return; }
+    me = name; roomCode = code; factCount = data.factCount;
+    await updateDoc(doc(db, 'rooms', code), { players: arrayUnion({ name: me, ready: false }) });
+    saveSession();
     listenRoom();
     openWriteScreen();
   } catch (e) { console.error(e); toast('Ошибка входа'); }
@@ -200,6 +247,7 @@ function renderPlay() {
 
   const owner = fact.owner;
   const iAmOwner = owner.toLowerCase() === me.toLowerCase();
+  const isCreator = (room.creator || '').toLowerCase() === me.toLowerCase();
   const required = room.players.filter(p => p.name.toLowerCase() !== owner.toLowerCase());
   const guessesAll = room.guesses || {};
   const answered = required.filter(p => guessesAll[p.name] && guessesAll[p.name][fid] !== undefined);
@@ -245,6 +293,9 @@ function renderPlay() {
   if (revealed) {
     const last = idx >= total - 1;
     html += `<button class="full gold mt16" data-action="nextFact">${last ? 'Показать результаты →' : 'Дальше →'}</button>`;
+  } else if (isCreator) {
+    // Unstick a step when someone dropped out and never answers.
+    html += `<button class="linklike skipbtn" data-action="skipStep">Кто-то завис? Показать ответ →</button>`;
   }
   html += `</div>`;
   card.innerHTML = html;
@@ -261,6 +312,12 @@ async function pick(fid, name) {
   g[fid] = name;
   try { await updateDoc(roomRef(), { [`guesses.${me}`]: g }); }
   catch (e) { console.error(e); toast('Не удалось отправить ответ'); }
+}
+
+// Creator forces the current step to reveal (someone dropped out mid-step).
+async function skipStep() {
+  try { await updateDoc(roomRef(), { stepRevealed: true }); }
+  catch (e) { console.error(e); toast('Не удалось пропустить'); }
 }
 
 async function nextFact() {
@@ -301,10 +358,33 @@ function showResults() {
   });
 
   const rev = $('reveal'); rev.innerHTML = '';
+  const guesses = room.guesses || {};
   room.facts.forEach(f => {
+    // who voted for whom on this fact (owner is excluded — she never guesses her own)
+    const votes = room.players
+      .map(p => ({ guesser: p.name, pick: guesses[p.name] ? guesses[p.name][f.id] : undefined }))
+      .filter(v => v.pick !== undefined && v.guesser.toLowerCase() !== f.owner.toLowerCase());
+    const correct = votes.filter(v => v.pick.toLowerCase() === f.owner.toLowerCase());
+
+    let votesHtml;
+    if (votes.length) {
+      const chips = votes
+        .slice().sort((a, b) => (b.pick.toLowerCase() === f.owner.toLowerCase()) - (a.pick.toLowerCase() === f.owner.toLowerCase()))
+        .map(v => {
+          const hit = v.pick.toLowerCase() === f.owner.toLowerCase();
+          return `<span class="vote-chip ${hit ? 'ok' : 'no'}">${escapeHtml(v.guesser)} → ${escapeHtml(v.pick)}</span>`;
+        }).join('');
+      votesHtml = `<div class="vote-list">${chips}</div>`;
+    } else {
+      votesHtml = `<div class="vote-empty">никто не проголосовал</div>`;
+    }
+
+    const countHtml = votes.length ? `<span class="vote-count">угадали ${correct.length} из ${votes.length}</span>` : '';
     const div = document.createElement('div');
     div.className = 'fact-item';
-    div.innerHTML = `<div class="fact-text revtext">«${escapeHtml(f.text)}»</div><div class="reveal-line hit">— ${escapeHtml(f.owner)}</div>`;
+    div.innerHTML = `<div class="fact-text revtext">«${escapeHtml(f.text)}»</div>`
+      + `<div class="reveal-line hit">— ${escapeHtml(f.owner)}${countHtml}</div>`
+      + votesHtml;
     rev.appendChild(div);
   });
   go('results');
@@ -327,7 +407,8 @@ document.addEventListener('click', e => {
     else if (a === 'submitFacts') submitFacts();
     else if (a === 'beginGame') beginGame();
     else if (a === 'nextFact') nextFact();
-    else if (a === 'reload') location.reload();
+    else if (a === 'skipStep') skipStep();
+    else if (a === 'reload') { clearSession(); location.reload(); }
     return;
   }
   const countEl = e.target.closest('.countbtn');

@@ -77,12 +77,21 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .reveal-line{font-size:.86rem;margin-top:12px;font-weight:700}
 .reveal-line.hit{color:var(--sage)}
 .reveal-line.miss{color:var(--coral)}
+.vote-count{color:#9a8a7d;font-weight:400;font-size:.8rem;margin-left:8px}
+.vote-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.vote-chip{font-size:.78rem;padding:5px 11px;border-radius:14px;font-weight:700;border:1px solid var(--line)}
+.vote-chip.ok{background:rgba(111,139,106,.15);color:var(--sage);border-color:rgba(111,139,106,.4)}
+.vote-chip.no{background:rgba(201,100,94,.12);color:var(--coral);border-color:rgba(201,100,94,.35)}
+.vote-empty{font-size:.78rem;color:#9a8a7d;margin-top:10px;font-style:italic}
 .mt16{margin-top:16px}
 .waitline{margin-top:12px}
 .revtext{margin-bottom:8px}
 .lobby-status{font-weight:400;color:#9a8a7d}
 .allready{color:var(--sage);font-weight:700}
 .back{background:none;border:none;color:var(--plum);font-family:inherit;font-size:.9rem;cursor:pointer;padding:0;margin-bottom:20px;text-decoration:underline}
+.linklike{background:none;color:var(--plum-soft);font-weight:400;font-size:.82rem;text-decoration:underline;padding:6px 0}
+.linklike:hover{background:none;color:var(--plum)}
+.skipbtn{display:block;margin:14px auto 0;text-align:center}
 .divider{height:1px;background:var(--line);margin:26px 0}
 .hidden{display:none!important}
 .center{text-align:center}
