@@ -19,6 +19,7 @@ let roomCode = "";
 let unsub = null;
 let room = null;
 let factCount = 3;
+let mode = 'free';     // 'free' = свободные факты; 'questions' = вопросы к девичнику
 let revealSent = -1;   // guard: reveal write already sent for this step index
 
 const $ = id => document.getElementById(id);
@@ -66,7 +67,7 @@ async function tryRestore() {
     const snap = await getDoc(doc(db, 'rooms', saved.roomCode));
     if (!snap.exists()) { clearSession(); return; }
     const data = snap.data();
-    me = saved.me; roomCode = saved.roomCode; factCount = data.factCount || 3;
+    me = saved.me; roomCode = saved.roomCode; factCount = data.factCount || 3; mode = data.mode || 'free';
     saveSession();   // reopening is activity — refresh savedAt so the window doesn't expire mid-game
     listenRoom();
     routeInitial(data);
@@ -100,6 +101,24 @@ function setCount(n) {
   });
 }
 
+// ---------- game mode (свободные факты / вопросы к девичнику) ----------
+const QUESTIONS = [
+  'Какой факт о вас удивляет людей сильнее всего?',
+  'Ваш guilty pleasure (постыдное удовольствие)',
+  'Какая у вас самая странная привычка?',
+  'Без чего вы не представляете своё утро?',
+  'В какую страну вы готовы улететь хоть завтра?',
+  'Если бы не нужно было работать, чем бы вы занимались?',
+  'Какая ваша самая нелепая покупка?',
+  'Какой самый необычный комплимент вам говорили?',
+  'Какой самый неловкий момент был у вас на свидании?'
+];
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('picked', b.dataset.mode === m));
+  $('countBlock').classList.toggle('hidden', m !== 'free');
+}
+
 // ---------- create room ----------
 // Pick a room code that isn't already taken. Rooms in the shared Firebase
 // project are never deleted, so codes accumulate; setDoc would silently
@@ -117,9 +136,10 @@ async function createRoom() {
   const name = $('cName').value.trim();
   if (!name) { toast('Впиши имя'); return; }
   me = name; roomCode = await freshCode();
+  if (mode === 'questions') factCount = QUESTIONS.length;
   try {
     await setDoc(roomRef(), {
-      code: roomCode, factCount, phase: 'lobby', creator: me,
+      code: roomCode, factCount, mode, phase: 'lobby', creator: me,
       players: [{ name: me, ready: false }],
       facts: [], guesses: {}, order: [], stepIndex: 0, stepRevealed: false,
       createdAt: serverTimestamp()
@@ -144,7 +164,7 @@ async function joinRoom() {
     if (data.phase !== 'lobby') {
       // Game already started: only an existing player may reconnect (e.g. after a refresh).
       if (!existing) { toast('Игра уже началась'); return; }
-      me = name; roomCode = code; factCount = data.factCount;
+      me = name; roomCode = code; factCount = data.factCount; mode = data.mode || 'free';
       saveSession();
       listenRoom();
       routeInitial(data);
@@ -152,7 +172,7 @@ async function joinRoom() {
     }
     // Lobby: a matching name means someone with that name is already in — pick another.
     if (existing) { toast('Это имя уже занято — выбери другое'); return; }
-    me = name; roomCode = code; factCount = data.factCount;
+    me = name; roomCode = code; factCount = data.factCount; mode = data.mode || 'free';
     await updateDoc(doc(db, 'rooms', code), { players: arrayUnion({ name: me, ready: false }) });
     saveSession();
     listenRoom();
@@ -162,14 +182,20 @@ async function joinRoom() {
 
 // ---------- write facts ----------
 function openWriteScreen() {
+  const questions = (mode === 'questions');
   ['wCode','lCode','pCode','rCode'].forEach(id => $(id).textContent = roomCode);
   $('wName').textContent = me;
+  $('wSub').textContent = questions
+    ? 'Ответь на все вопросы — по ответам подруги будут угадывать, кто это. Не давай подсмотреть 🙈'
+    : 'Факты, которые про тебя, но не слишком очевидные. Не давай подругам подсмотреть 🙈';
   const box = $('factInputs'); box.innerHTML = '';
   const ex = ['В детстве съела мыло на спор','Знаю все столицы Африки','Боюсь голубей','Была на концерте до 10 лет','Умею шевелить ушами'];
   for (let i = 0; i < factCount; i++) {
+    const label = questions ? QUESTIONS[i] : `Факт ${i+1}`;
+    const ph = questions ? 'Твой ответ…' : ex[i % ex.length];
     const row = document.createElement('div');
-    row.style.marginBottom = '12px';
-    row.innerHTML = `<label>Факт ${i+1}</label><textarea class="factField" placeholder="${ex[i % ex.length]}"></textarea>`;
+    row.style.marginBottom = '14px';
+    row.innerHTML = `<label>${escapeHtml(label)}</label><textarea class="factField" placeholder="${escapeAttr(ph)}"></textarea>`;
     box.appendChild(row);
   }
   go('write');
@@ -179,7 +205,11 @@ async function submitFacts() {
   const facts = [...document.querySelectorAll('.factField')].map(f => f.value.trim());
   if (facts.some(f => !f)) { toast('Заполни все факты'); return; }
   const ref = roomRef();
-  const newFacts = facts.map((t, i) => ({ id: me + '__' + i, text: t, owner: me }));
+  const newFacts = facts.map((t, i) => {
+    const f = { id: me + '__' + i, text: t, owner: me };
+    if (mode === 'questions') f.q = QUESTIONS[i];  // store question so rendering doesn't depend on client state
+    return f;
+  });
   try {
     // Transaction: submitFacts rewrites the whole facts+players arrays, so two
     // people finishing at once would otherwise last-write-wins and drop one's
@@ -285,6 +315,7 @@ function renderPlay() {
 
   let html = `<div class="fact-item">
     <div class="fact-num">${iAmOwner ? 'Твой факт' : 'Факт'}</div>
+    ${fact.q ? `<div class="fact-q">${escapeHtml(fact.q)}</div>` : ''}
     <div class="fact-text">«${escapeHtml(fact.text)}»</div>`;
 
   if (iAmOwner) {
@@ -410,7 +441,8 @@ function showResults() {
     const countHtml = votes.length ? `<span class="vote-count">угадали ${correct.length} из ${votes.length}</span>` : '';
     const div = document.createElement('div');
     div.className = 'fact-item';
-    div.innerHTML = `<div class="fact-text revtext">«${escapeHtml(f.text)}»</div>`
+    div.innerHTML = (f.q ? `<div class="fact-q">${escapeHtml(f.q)}</div>` : '')
+      + `<div class="fact-text revtext">«${escapeHtml(f.text)}»</div>`
       + `<div class="reveal-line hit">— ${escapeHtml(f.owner)}${countHtml}</div>`
       + votesHtml;
     rev.appendChild(div);
@@ -427,7 +459,7 @@ document.addEventListener('click', e => {
   const actionEl = e.target.closest('[data-action]');
   if (actionEl) {
     const a = actionEl.dataset.action;
-    if (a === 'showCreate') { go('create'); setCount(3); }
+    if (a === 'showCreate') { go('create'); setCount(3); setMode('free'); }
     else if (a === 'showJoin') go('join');
     else if (a === 'home') go('home');
     else if (a === 'createRoom') createRoom();
@@ -439,6 +471,8 @@ document.addEventListener('click', e => {
     else if (a === 'reload') { clearSession(); location.reload(); }
     return;
   }
+  const modeEl = e.target.closest('[data-mode]');
+  if (modeEl) { setMode(modeEl.dataset.mode); return; }
   const countEl = e.target.closest('.countbtn');
   if (countEl) { setCount(+countEl.dataset.n); return; }
   const guessEl = e.target.closest('.guess-chip');

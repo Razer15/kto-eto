@@ -41,17 +41,31 @@
     <button class="back" data-action="home">← назад</button>
     <div class="step-hint">Создание комнаты</div>
     <h2>Новая игра</h2>
-    <p class="sub">Задай, сколько фактов пишет каждая. У всех будет одинаково.</p>
+    <p class="sub">Выбери режим и впиши имя. Настройки будут у всех одинаковые.</p>
     <div class="card">
       <label for="cName">Твоё имя</label>
       <input type="text" id="cName" placeholder="Например, Настя" autocomplete="off">
       <div class="gap16"></div>
-      <label for="cCount">Сколько фактов от каждой</label>
-      <div class="row rowtight">
-        <button type="button" class="ghost countbtn" data-n="2">2</button>
-        <button type="button" class="ghost countbtn" data-n="3">3</button>
-        <button type="button" class="ghost countbtn" data-n="4">4</button>
-        <button type="button" class="ghost countbtn" data-n="5">5</button>
+      <label>Режим игры</label>
+      <div class="mode-pick modepick-tight">
+        <div class="mode-btn compact picked" data-mode="free">
+          <div class="mb-title plum">Свободный режим</div>
+          <div class="mb-desc">Каждая пишет свои факты в свободной форме</div>
+        </div>
+        <div class="mode-btn compact" data-mode="questions">
+          <div class="mb-title plum">Вопросы к девичнику</div>
+          <div class="mb-desc">Все отвечают на 9 одинаковых вопросов</div>
+        </div>
+      </div>
+      <div id="countBlock">
+        <div class="gap16"></div>
+        <label for="cCount">Сколько фактов от каждой</label>
+        <div class="row rowtight">
+          <button type="button" class="ghost countbtn" data-n="2">2</button>
+          <button type="button" class="ghost countbtn" data-n="3">3</button>
+          <button type="button" class="ghost countbtn" data-n="4">4</button>
+          <button type="button" class="ghost countbtn" data-n="5">5</button>
+        </div>
       </div>
       <div class="gap20"></div>
       <button class="full gold" data-action="createRoom">Создать комнату →</button>
@@ -79,7 +93,7 @@
   <section id="write" class="hidden">
     <div class="step-hint">Комната <span id="wCode" class="code-badge"></span></div>
     <h2>Напиши о себе, <span id="wName"></span></h2>
-    <p class="sub">Факты, которые про тебя, но не слишком очевидные. Не давай подругам подсмотреть 🙈</p>
+    <p class="sub" id="wSub">Факты, которые про тебя, но не слишком очевидные. Не давай подругам подсмотреть 🙈</p>
     <div class="card">
       <div id="factInputs"></div>
       <button class="full gold" data-action="submitFacts">Я готова →</button>
