@@ -21,6 +21,7 @@ let room = null;
 let factCount = 3;
 let mode = 'free';     // 'free' = свободные факты; 'questions' = вопросы к девичнику
 let revealSent = -1;   // guard: reveal write already sent for this step index
+let pendingRejoin = null;  // {code, name} — ждём подтверждения возврата в лобби
 
 const $ = id => document.getElementById(id);
 const roomRef = () => doc(db, 'rooms', roomCode);
@@ -105,6 +106,7 @@ function setCount(n) {
 const QUESTIONS = [
   'Какой факт о вас удивляет людей сильнее всего?',
   'Ваш guilty pleasure (постыдное удовольствие)',
+  'Какой фильм или сериал вы пересматриваете каждый год?',
   'Какая у вас самая странная привычка?',
   'Без чего вы не представляете своё утро?',
   'В какую страну вы готовы улететь хоть завтра?',
@@ -170,14 +172,45 @@ async function joinRoom() {
       routeInitial(data);
       return;
     }
-    // Lobby: a matching name means someone with that name is already in — pick another.
-    if (existing) { toast('Это имя уже занято — выбери другое'); return; }
+    // Lobby: name already present — could be this player returning (closed tab /
+    // switched device) or a genuine duplicate. Ask before reclaiming the identity.
+    if (existing) {
+      pendingRejoin = { code, name };
+      $('rejoinText').textContent = `Имя «${name}» уже в комнате. Это ты возвращаешься в игру?`;
+      $('rejoinConfirm').classList.remove('hidden');
+      return;
+    }
     me = name; roomCode = code; factCount = data.factCount; mode = data.mode || 'free';
     await updateDoc(doc(db, 'rooms', code), { players: arrayUnion({ name: me, ready: false }) });
     saveSession();
     listenRoom();
     openWriteScreen();
   } catch (e) { console.error(e); toast('Ошибка входа'); }
+}
+
+// "Да, это я" — reclaim the existing identity (re-read to route by current phase).
+async function rejoinYes() {
+  if (!pendingRejoin) return;
+  const { code, name } = pendingRejoin;
+  pendingRejoin = null;
+  $('rejoinConfirm').classList.add('hidden');
+  try {
+    const snap = await getDoc(doc(db, 'rooms', code));
+    if (!snap.exists()) { toast('Комната не найдена'); return; }
+    const data = snap.data();
+    me = name; roomCode = code; factCount = data.factCount; mode = data.mode || 'free';
+    saveSession();
+    listenRoom();
+    routeInitial(data);
+  } catch (e) { console.error(e); toast('Ошибка входа'); }
+}
+
+function hideRejoin() { pendingRejoin = null; $('rejoinConfirm').classList.add('hidden'); }
+
+// "Другое имя" — cancel and let them pick a different name.
+function rejoinNo() {
+  hideRejoin();
+  const jn = $('jName'); jn.value = ''; jn.focus();
 }
 
 // ---------- write facts ----------
@@ -460,10 +493,12 @@ document.addEventListener('click', e => {
   if (actionEl) {
     const a = actionEl.dataset.action;
     if (a === 'showCreate') { go('create'); setCount(3); setMode('free'); }
-    else if (a === 'showJoin') go('join');
+    else if (a === 'showJoin') { go('join'); hideRejoin(); }
     else if (a === 'home') go('home');
     else if (a === 'createRoom') createRoom();
     else if (a === 'joinRoom') joinRoom();
+    else if (a === 'rejoinYes') rejoinYes();
+    else if (a === 'rejoinNo') rejoinNo();
     else if (a === 'submitFacts') submitFacts();
     else if (a === 'beginGame') beginGame();
     else if (a === 'nextFact') nextFact();
