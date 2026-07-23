@@ -120,6 +120,8 @@ function setMode(m) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('picked', b.dataset.mode === m));
   $('countBlock').classList.toggle('hidden', m !== 'free');
 }
+// число вопросов на карточке режима — из источника правды, чтобы не разъезжалось
+if ($('qCount')) $('qCount').textContent = QUESTIONS.length;
 
 // ---------- create room ----------
 // Pick a room code that isn't already taken. Rooms in the shared Firebase
@@ -213,6 +215,39 @@ function rejoinNo() {
   const jn = $('jName'); jn.value = ''; jn.focus();
 }
 
+// ---------- leave room ----------
+function showLeaveModal() { $('leaveModal').classList.remove('hidden'); }
+function hideLeaveModal() { $('leaveModal').classList.add('hidden'); }
+
+// Покинуть комнату: пометить себя left (факты и кандидатура остаются, но ждать
+// перестаём), при необходимости передать роль создательницы, вернуться на главную.
+async function leaveRoom() {
+  hideLeaveModal();
+  const code = roomCode, name = me;
+  if (code && name) {
+    try {
+      const ref = doc(db, 'rooms', code);
+      await runTransaction(db, async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const players = (data.players || []).map(p => p.name.toLowerCase() === name.toLowerCase() ? { ...p, left: true } : p);
+        const update = { players };
+        // если уходит создательница — передать роль другой активной участнице
+        if ((data.creator || '').toLowerCase() === name.toLowerCase()) {
+          const next = players.find(p => p.name.toLowerCase() !== name.toLowerCase() && !p.left);
+          if (next) update.creator = next.name;
+        }
+        tx.update(ref, update);
+      });
+    } catch (e) { console.error(e); }
+  }
+  if (unsub) { unsub(); unsub = null; }
+  room = null; me = ''; roomCode = ''; mode = 'free'; factCount = 3; pendingRejoin = null; revealSent = -1;
+  clearSession();
+  go('home');
+}
+
 // ---------- write facts ----------
 function openWriteScreen() {
   const questions = (mode === 'questions');
@@ -282,15 +317,16 @@ function render() {
 
 // ---------- lobby ----------
 function renderLobby() {
+  const active = room.players.filter(p => !p.left);  // вышедших не показываем и не ждём
   const list = $('lobbyList'); list.innerHTML = '';
-  room.players.forEach(p => {
+  active.forEach(p => {
     const chip = document.createElement('div');
     chip.className = 'lobby-chip' + (p.ready ? '' : ' waiting');
     chip.innerHTML = `<span class="dot"></span>${escapeHtml(p.name)} <span class="lobby-status">${p.ready ? 'готова' : 'пишет…'}</span>`;
     list.appendChild(chip);
   });
-  const allReady = room.players.length >= 2 && room.players.every(p => p.ready);
-  const readyCount = room.players.filter(p => p.ready).length;
+  const allReady = active.length >= 2 && active.every(p => p.ready);
+  const readyCount = active.filter(p => p.ready).length;
   const isCreator = (room.creator || '').toLowerCase() === me.toLowerCase();
 
   $('lobbyHint').textContent = isCreator
@@ -299,7 +335,7 @@ function renderLobby() {
 
   $('lobbyStatus').innerHTML = allReady
     ? `<p class="center allready">Все готовы! 🎉</p>`
-    : `<p class="field-note center">Готовы: ${readyCount} из ${room.players.length}${room.players.length < 2 ? ' · нужно минимум 2 участницы' : ''}</p>`;
+    : `<p class="field-note center">Готовы: ${readyCount} из ${active.length}${active.length < 2 ? ' · нужно минимум 2 участницы' : ''}</p>`;
 
   const startArea = $('startArea'), waitStart = $('waitStart');
   if (isCreator) {
@@ -336,7 +372,7 @@ function renderPlay() {
   const owner = fact.owner;
   const iAmOwner = owner.toLowerCase() === me.toLowerCase();
   const isCreator = (room.creator || '').toLowerCase() === me.toLowerCase();
-  const required = room.players.filter(p => p.name.toLowerCase() !== owner.toLowerCase());
+  const required = room.players.filter(p => p.name.toLowerCase() !== owner.toLowerCase() && !p.left);
   const guessesAll = room.guesses || {};
   const answered = required.filter(p => guessesAll[p.name] && guessesAll[p.name][fid] !== undefined);
   const allAnswered = required.length > 0 && answered.length === required.length;
@@ -383,8 +419,13 @@ function renderPlay() {
     const last = idx >= total - 1;
     html += `<button class="full gold mt16" data-action="nextFact">${last ? 'Показать результаты →' : 'Дальше →'}</button>`;
   } else if (isCreator) {
-    // Unstick a step when someone dropped out and never answers.
-    html += `<button class="linklike skipbtn" data-action="skipStep">Кто-то завис? Показать ответ →</button>`;
+    // Creator controls while the step is still open: show the answer for THIS
+    // fact, or skip straight to the next question without waiting for stragglers.
+    const last = idx >= total - 1;
+    html += `<div class="creator-tools">
+      <button class="linklike" data-action="skipStep">Показать ответ →</button>
+      <button class="linklike" data-action="nextFact">${last ? 'Продолжить без ожидания · к результатам →' : 'Продолжить без ожидания →'}</button>
+    </div>`;
   }
   html += `</div>`;
   card.innerHTML = html;
@@ -499,6 +540,9 @@ document.addEventListener('click', e => {
     else if (a === 'joinRoom') joinRoom();
     else if (a === 'rejoinYes') rejoinYes();
     else if (a === 'rejoinNo') rejoinNo();
+    else if (a === 'leaveAsk') showLeaveModal();
+    else if (a === 'leaveYes') leaveRoom();
+    else if (a === 'leaveNo') hideLeaveModal();
     else if (a === 'submitFacts') submitFacts();
     else if (a === 'beginGame') beginGame();
     else if (a === 'nextFact') nextFact();

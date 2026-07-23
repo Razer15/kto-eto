@@ -54,7 +54,7 @@
         </div>
         <div class="mode-btn compact" data-mode="questions">
           <div class="mb-title plum">Вопросы к девичнику</div>
-          <div class="mb-desc">Все отвечают на 9 одинаковых вопросов</div>
+          <div class="mb-desc">Все отвечают на <span id="qCount">10</span> одинаковых вопросов</div>
         </div>
       </div>
       <div id="countBlock">
@@ -105,6 +105,7 @@
       <div id="factInputs"></div>
       <button class="full gold" data-action="submitFacts">Я готова →</button>
     </div>
+    <button class="leave-link" data-action="leaveAsk">Выйти из комнаты</button>
   </section>
 
   <!-- LOBBY -->
@@ -123,6 +124,7 @@
         <p class="center field-note" id="waitStartText"></p>
       </div>
     </div>
+    <button class="leave-link" data-action="leaveAsk">Выйти из комнаты</button>
   </section>
 
   <!-- PLAY -->
@@ -132,6 +134,7 @@
     <p class="sub">Отметь, кому он принадлежит. Идём по одному факту — ждём всех и сразу смотрим ответ.</p>
     <div class="progress" id="playProgress"></div>
     <div id="factCard"></div>
+    <button class="leave-link" data-action="leaveAsk">Выйти из комнаты</button>
   </section>
 
   <!-- RESULTS -->
@@ -148,6 +151,16 @@
     <button class="full ghost mt20" data-action="reload">Сыграть заново</button>
   </section>
 
+</div>
+
+<div id="leaveModal" class="modal hidden">
+  <div class="modal-card">
+    <p class="modal-text">Выйти из комнаты?</p>
+    <p class="modal-note">Вернёшься на главный экран. Твои ответы останутся у остальных, но ждать тебя не будут.</p>
+    <button class="full coral" data-action="leaveYes">Выйти →</button>
+    <div class="gap16"></div>
+    <button class="full ghost" data-action="leaveNo">Остаться</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
